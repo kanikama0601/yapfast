@@ -531,6 +531,13 @@ impl SkiaRenderer {
         Self::new_with_surface_factory(context, no_wgpu_surface_factory, None)
     }
 
+    // Yapfast: macOS draws the GPU setting with Skia OpenGL, so Metal, which
+    // Skia reaches only through wgpu, is one of the renderers above.
+    #[cfg(all(target_vendor = "apple", not(skia_backend_wgpu)))]
+    pub fn default_metal(context: &SkiaSharedContext) -> Self {
+        Self::new_with_surface_factory(context, no_wgpu_surface_factory, None)
+    }
+
     #[cfg(feature = "wgpu-29")]
     /// Creates a new SkiaRenderer that will always use Skia's WGPU 29.x renderer.
     pub fn default_wgpu_29(context: &SkiaSharedContext) -> Self {
