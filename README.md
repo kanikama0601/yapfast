@@ -292,11 +292,13 @@ Then [build it yourself](#build-it-yourself).
 
 ### macOS
 
-There's a build for Macs with Apple silicon, macOS 11 or newer, but nobody
-has tried it on a Mac yet, so expect rough edges, and tell us how it goes!
+There are builds for macOS 11 or newer, on Apple silicon and on Intel, but
+nobody has tried them on a Mac yet, so expect rough edges, and tell us how it
+goes!
 
-1. Download `Yapfast-…-macos-arm64.dmg` from the
-   [latest release](../../releases/latest), open it, and drag Yapfast into
+1. Download one from the [latest release](../../releases/latest):
+   `Yapfast-…-macos-arm64.dmg` for Apple silicon (M1 and later), or
+   `Yapfast-…-macos-x64.dmg` for Intel. Open it, and drag Yapfast into
    Applications.
 2. It isn't notarized yet, so the first time, Control-click Yapfast in
    Applications and choose **Open**, then **Open** again.

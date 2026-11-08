@@ -15,18 +15,25 @@ import tempfile
 
 from release_package import REPOSITORY, ROOT, dependency_notices, digest, names_home, source_snapshot
 
-TARGET = "aarch64-apple-darwin"
+# For each target: the architecture lipo names, the one in LiveKit's
+# libwebrtc folder and the one in the disk image's name, which is the
+# Windows package's for Intel.
+TARGETS = {
+    "aarch64-apple-darwin": {"lipo": "arm64", "webrtc": "mac-arm64", "file": "arm64"},
+    "x86_64-apple-darwin": {"lipo": "x86_64", "webrtc": "mac-x64", "file": "x64"},
+}
 FEATURES = ["--no-default-features", "--features", "desktop,discord"]
-# Rust's own minimum for the target, which scripts/build-macos builds for.
+# Rust's own minimum for Apple silicon, which scripts/build-macos builds both
+# targets for.
 MINIMUM_SYSTEM = "11.0"
 # Each size Finder and the Dock draw, at 1× and 2×.
 ICON_SIZES = [16, 32, 128, 256, 512]
 
 
-def webrtc_folder():
+def webrtc_folder(name):
     """LiveKit's libwebrtc, which webrtc-sys-build downloaded for the build."""
     folders = sorted(path.parent for path in (ROOT / "target/release/build").glob(
-        "scratch-*/out/livekit_webrtc/livekit/mac-arm64-release-*/mac-arm64-release/LICENSE.md"))
+        f"scratch-*/out/livekit_webrtc/livekit/{name}-release-*/{name}-release/LICENSE.md"))
     if len(folders) != 1:
         raise SystemExit(f"Expected one downloaded macOS libwebrtc, found {folders}")
     return folders[0]
@@ -46,15 +53,17 @@ def icon(destination, temporary):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--exe", type=Path, default=ROOT / "target" / TARGET / "release/yapfast")
+    parser.add_argument("--target", choices=TARGETS, default="aarch64-apple-darwin")
+    parser.add_argument("--exe", type=Path, help="default: target/TARGET/release/yapfast")
     parser.add_argument("--skia-source", type=Path, required=True,
                         help="Skia's source with its third-party code, for their notices")
     parser.add_argument("--output", type=Path, default=ROOT / "target/dist/macos")
     args = parser.parse_args()
-    executable = args.exe.resolve()
+    target = TARGETS[args.target]
+    executable = (args.exe or ROOT / "target" / args.target / "release/yapfast").resolve()
     architectures = subprocess.check_output(["lipo", "-archs", executable], text=True, timeout=30).split()
-    if architectures != ["arm64"]:
-        raise SystemExit(f"Expected an arm64 executable, not {architectures}")
+    if architectures != [target["lipo"]]:
+        raise SystemExit(f"Expected an {target['lipo']} executable, not {architectures}")
     contents = executable.read_bytes()
     if names_home(contents):
         raise SystemExit(f"{executable} names {Path.home()}; build it with scripts/build-macos")
@@ -62,14 +71,14 @@ def main():
         raise SystemExit(f"{executable} has Matrix; the macOS release is the Discord flavour")
     del contents
     metadata = json.loads(subprocess.check_output(
-        ["cargo", "metadata", "--locked", "--format-version", "1", "--filter-platform", TARGET, *FEATURES],
+        ["cargo", "metadata", "--locked", "--format-version", "1", "--filter-platform", args.target, *FEATURES],
         cwd=ROOT, timeout=60,
     ))
     version = next(package["version"] for package in metadata["packages"] if package["name"] == "yapfast")
     output = args.output
     output.mkdir(parents=True, exist_ok=True)
     base = f"Yapfast-{version}"
-    image = output / f"{base}-macos-arm64.dmg"
+    image = output / f"{base}-macos-{target['file']}.dmg"
     source_path = output / f"{base}-source.zip"
     with tempfile.TemporaryDirectory(prefix="yapfast-macos-package-") as temporary:
         temporary = Path(temporary)
@@ -115,12 +124,12 @@ def main():
             "holds every dependency's own license and notices.\n",
             encoding="utf-8",
         )
-        webrtc = webrtc_folder()
+        webrtc = webrtc_folder(target["webrtc"])
         dependencies = dependency_notices(metadata, resources, resources / "licenses", None,
                                           args.skia_source, webrtc)
         (resources / "THIRD-PARTY.json").write_text(json.dumps(dependencies, indent=2) + "\n", encoding="utf-8")
         build = {
-            "version": version, "flavour": "discord", "target": TARGET,
+            "version": version, "flavour": "discord", "target": args.target,
             "cargo_features": " ".join(FEATURES),
             "rustc": subprocess.check_output(["rustc", "--version"], text=True, timeout=10).strip(),
             "macos_minimum": MINIMUM_SYSTEM,

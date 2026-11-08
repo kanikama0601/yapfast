@@ -81,7 +81,7 @@ jobs:
             echo
             echo "On Arch Linux, install the .pkg.tar.zst with \`sudo pacman -U\` and its link."
             echo
-            echo "The macOS disk image is for Apple silicon, signed ad hoc and not notarized: open Yapfast.app the first time with Control-click, Open."
+            echo "On macOS, the arm64 disk image is for Apple silicon and the x64 one for Intel. They're signed ad hoc and not notarized: open Yapfast.app the first time with Control-click, Open."
           } > notes.md
           # Titled as the stable releases are, with the commit: the version
           # already says it's a nightly.

@@ -1,7 +1,7 @@
 # Builds the Discord release of one commit at one version for Linux, Windows
 # and macOS, for nightly.yml and release.yml, which publish what it uploads:
-# the artifacts linux, windows, windows-installer and macos. See
-# docs/packaging.md.
+# the artifacts linux, windows, windows-installer, macos-arm64 and
+# macos-x86_64. See docs/packaging.md.
 name: Build
 
 on:
@@ -153,9 +153,18 @@ jobs:
           path: skia-notices.tar.gz
           if-no-files-found: error
 
+  # Each on a Mac of its own processor, so every build script runs where it
+  # builds for: Apple silicon and Intel.
   macos:
     needs: skia-notices
-    runs-on: macos-15
+    strategy:
+      matrix:
+        include:
+          - arch: arm64
+            runner: macos-15
+          - arch: x86_64
+            runner: macos-15-intel
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -163,8 +172,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      # rsvg-convert draws the icon; scripts/set-version takes GNU sed.
-      - run: brew install librsvg gnu-sed
+      # rsvg-convert draws the icon, NASM assembles x264's x86-64 code, and
+      # scripts/set-version takes GNU sed.
+      - run: brew install librsvg nasm gnu-sed
       - uses: Swatinem/rust-cache@v2
         with:
           cache-on-failure: true
@@ -176,10 +186,10 @@ jobs:
       - run: |
           mkdir "$RUNNER_TEMP/skia-source"
           tar -xzf "$RUNNER_TEMP/skia-notices.tar.gz" -C "$RUNNER_TEMP/skia-source"
-          scripts/build-macos "$RUNNER_TEMP/skia-source"
+          scripts/build-macos "$RUNNER_TEMP/skia-source" ${{ matrix.arch }}
       - uses: actions/upload-artifact@v4
         with:
-          name: macos
+          name: macos-${{ matrix.arch }}
           path: target/dist/macos/Yapfast-*
           if-no-files-found: error
           compression-level: 0
