@@ -14,7 +14,7 @@ import subprocess
 import tempfile
 import urllib.parse
 
-from release_package import ROOT, dependency_notices, digest, names_home, source_snapshot, zip_directory
+from release_package import REPOSITORY, ROOT, dependency_notices, digest, names_home, source_snapshot, zip_directory
 
 TARGET = "x86_64-pc-windows-msvc"
 # Inno Setup's compiler, run under Wine; installed once into its own prefix.
@@ -143,13 +143,13 @@ def main():
         shutil.copy2(ROOT / "LICENSE", package / "LICENSE.txt")
         # The source snapshot goes beside the packages, on the release page,
         # rather than into every install; SOURCE.txt says where.
-        source_url = f"https://github.com/yapfast/yapfast/releases/tag/v{version}{flavour['suffix']}"
+        source_url = f"https://github.com/{REPOSITORY}/releases/tag/v{version}{flavour['suffix']}"
         (package / "SOURCE.txt").write_text(
             f"The source code of this build of Yapfast {version}"
             + (", with the exact source of\nthe libraries it includes under the AGPL," if rtc else "")
             + " is published with it:\n\n"
             f"  {source_url}\n  {source_path.name}, SHA-256 in BUILD.json\n\n"
-            "and in the repository, https://github.com/yapfast/yapfast. The licenses folder\n"
+            f"and in the repository, https://github.com/{REPOSITORY}. The licenses folder\n"
             "holds every dependency's own license and notices.\n",
             encoding="utf-8", newline="\r\n",
         )

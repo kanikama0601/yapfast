@@ -1,0 +1,149 @@
+# A release of main: Actions > Release > Run workflow, choosing which part of
+# the version to raise. It builds the Linux, Windows and macOS packages at the
+# new version (build.yml), then commits that version to main with the
+# changes since the previous release in CHANGELOG.md, tags the commit and
+# publishes the packages as the latest release, with the same changes in its
+# notes. See docs/packaging.md.
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: "Part of the version to raise: 0.3.0 becomes 0.3.1 (patch), 0.4.0 (minor) or 1.0.0 (major)"
+        type: choice
+        options: [minor, patch, major]
+        default: minor
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      commit: ${{ steps.version.outputs.commit }}
+      previous: ${{ steps.version.outputs.previous }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      BUMP: ${{ inputs.bump }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: main
+          # The commit that set the current version, below.
+          fetch-depth: 0
+      - id: version
+        run: |
+          current=$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -1)
+          IFS=. read -r major minor patch <<< "${current%%-*}"
+          case $BUMP in
+            major) version=$((major + 1)).0.0 ;;
+            minor) version=$major.$((minor + 1)).0 ;;
+            patch) version=$major.$minor.$((patch + 1)) ;;
+          esac
+          if git ls-remote --exit-code --tags origin "refs/tags/v$version" > /dev/null; then
+            echo "v$version is already tagged" >&2
+            exit 1
+          fi
+          # The changes since the latest release, or, before this repository
+          # has one, since the commit that set the version it raises.
+          previous=$(gh release list --exclude-drafts --exclude-pre-releases --limit 1 \
+            --json tagName --jq '.[0].tagName // empty')
+          if [ -z "$previous" ]; then
+            previous=$(git log -1 --format=%H -G '^version = "' -- Cargo.toml)
+          fi
+          echo "Releasing $version, raised from $current, with the changes since $previous"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "previous=$previous" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: version
+    uses: ./.github/workflows/build.yml
+    with:
+      version: ${{ needs.version.outputs.version }}
+      commit: ${{ needs.version.outputs.commit }}
+
+  release:
+    needs: [version, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      VERSION: ${{ needs.version.outputs.version }}
+      COMMIT: ${{ needs.version.outputs.commit }}
+      PREVIOUS: ${{ needs.version.outputs.previous }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.version.outputs.commit }}
+          fetch-depth: 0
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+      - run: .github/scripts/collect-release dist release
+      - name: Write the changes
+        run: |
+          # A tag is named as it is; a commit by its short hash.
+          since=$PREVIOUS
+          if [[ $PREVIOUS =~ ^[0-9a-f]{40}$ ]]; then
+            since=${PREVIOUS:0:7}
+          fi
+          .github/scripts/change-list "$PREVIOUS" "$COMMIT" > changes.md
+          {
+            echo "## Changes since $since"
+            echo
+            cat changes.md
+            echo
+            echo "## Downloads"
+            echo
+            echo "- Linux: the AppImage, or on Arch Linux the .pkg.tar.zst, installed with \`sudo pacman -U\` and its link."
+            echo "- Windows 10/11: the setup .exe, or the portable ZIP."
+            echo "- macOS 11 or later on Apple silicon: the .dmg. It's signed ad hoc and not notarized, so open Yapfast.app the first time with Control-click, Open."
+            echo
+            echo "SHA256SUMS.txt holds each file's SHA-256."
+          } > notes.md
+          {
+            echo "# Changelog"
+            echo
+            echo "Each release's changes since the one before, as its release notes list them."
+            echo
+            echo "## $VERSION ($(date -u +%F))"
+            echo
+            # One level down, under the release's heading.
+            sed 's/^### /#### /' changes.md
+            # The earlier releases, below the four lines of heading above.
+            if [ -f CHANGELOG.md ]; then
+              echo
+              tail -n +5 CHANGELOG.md
+            fi
+          } > CHANGELOG.new
+          mv CHANGELOG.new CHANGELOG.md
+      - name: Commit and tag the version
+        run: |
+          scripts/set-version "$VERSION"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Cargo.toml Cargo.lock CHANGELOG.md packaging
+          git commit --message "chore(release): $VERSION"
+          git tag "v$VERSION"
+          git push origin "v$VERSION"
+          # Commits that reached main during the build come before the
+          # release's: a merge keeps the tagged commit in main's history.
+          if ! git push origin HEAD:main; then
+            git fetch origin main
+            git merge --no-edit FETCH_HEAD
+            git push origin HEAD:main
+          fi
+      - name: Publish
+        run: |
+          gh release create "v$VERSION" release/* --verify-tag --latest \
+            --title "Yapfast $VERSION" --notes-file notes.md
