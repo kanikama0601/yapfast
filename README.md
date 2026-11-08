@@ -292,8 +292,15 @@ Then [build it yourself](#build-it-yourself).
 
 ### macOS
 
-Not yet, sorry :( I'd love to make one, but I don't own an Apple machine to
-test it on.
+There's a build for Macs with Apple silicon, macOS 11 or newer, but nobody
+has tried it on a Mac yet, so expect rough edges, and tell us how it goes!
+
+1. Download `Yapfast-…-macos-arm64.dmg` from the
+   [latest release](../../releases/latest), open it, and drag Yapfast into
+   Applications.
+2. It isn't notarized yet, so the first time, Control-click Yapfast in
+   Applications and choose **Open**, then **Open** again.
+3. Link your account with the QR code, as on Windows.
 
 <details>
 <summary><b>Nightly builds</b></summary>

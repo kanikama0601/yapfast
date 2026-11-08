@@ -1,8 +1,8 @@
-# The commit list in a nightly's notes, from GitHub's compare API: features
-# and fixes, newest first, and the rest folded away. Merges are left out,
-# since their commits are listed. GitHub names each author's account by the
-# commit's email. Conventional Commit types sort them; the scripts' own
-# features and fixes count as other changes.
+# The commit list in a release's or a nightly's notes, from GitHub's
+# compare API: features and fixes, newest first, and the rest folded away.
+# Merges are left out, since their commits are listed. GitHub names each
+# author's account by the commit's email. Conventional Commit types sort
+# them; the scripts' own features and fixes count as other changes.
 def section($title; $lines):
   if ($lines | length) > 0 then "### \($title)\n\n" + ($lines | join("\n")) + "\n" else empty end;
 

@@ -1,6 +1,7 @@
 """What scripts/package-windows.py and scripts/package-linux.py share: the
 source snapshot each release carries, and the dependencies' licenses and
 notices each package holds."""
+import contextlib
 import hashlib
 import os
 import shutil
@@ -10,6 +11,9 @@ import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+# Where the release is published, for SOURCE.txt: the repository whose
+# workflow builds it, or else Yapfast's own.
+REPOSITORY = os.environ.get("GITHUB_REPOSITORY", "yapfast/yapfast")
 SOURCE_FILES = ("Cargo.toml", "Cargo.lock", "build.rs", "rust-toolchain.toml", "README.md", "LICENSE", ".gitignore")
 SOURCE_DIRECTORIES = (".cargo", "src", "ui", "packaging", "crates", "scripts", "nix", "vendor", "testing", "docs")
 
@@ -92,8 +96,10 @@ def dependency_notices(metadata, package, licenses, skia_archive, skia_source, w
             "name": item["name"], "version": item["version"], "license": item["license"],
             "source": item["source"], "repository": item["repository"], "license_files": copied,
         })
-    with tarfile.open(skia_archive) as native:
-        for member in native.getmembers():
+    # macOS takes rust-skia's own prebuilt Skia, which the build downloads and
+    # doesn't keep; Skia's source holds the same notices.
+    with tarfile.open(skia_archive) if skia_archive else contextlib.nullcontext() as native:
+        for member in native.getmembers() if native else []:
             if member.isfile() and Path(member.name).name.upper().startswith(("LICENSE", "COPYING", "NOTICE")):
                 notice_file = native.extractfile(member)
                 if notice_file is None:

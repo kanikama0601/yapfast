@@ -100,7 +100,10 @@ quality, default to the cheaper setting and put the heavier one behind a switch.
   description, say which pull request goes in first.
 - Write commit subjects as Conventional Commits, in the present tense, saying
   what changes for the user: `feat(discord): join and leave threads from their
-  menu`. The body says what it does and why.
+  menu`. The body says what it does and why. Each push to `main` is
+  released, and the types choose its version: a `feat` raises the minor
+  version, a `!` after the type the major one (the minor one before 1.0),
+  anything else the patch; see [packaging](docs/packaging.md#releases-on-github).
 - A change in behavior updates its doc in the same commit. Docs describe how
   things work now; history and measurements go in the commit message.
 - In the description, say what you ran, what you skipped and which systems you

@@ -1,5 +1,5 @@
 //! Files dragged onto the window from a file manager. winit reports them on
-//! X11 and Windows; on Wayland, where winit has no drag and drop, a data
+//! X11, Windows and macOS; on Wayland, where winit has no drag and drop, a data
 //! device of Yapfast's own on winit's connection does.
 
 use std::path::PathBuf;
@@ -19,7 +19,8 @@ pub enum Drag {
 
 /// Where the pointer is over a window, for the drags winit reports without
 /// it: on X11 and Windows. One is made for each drag and asked while the
-/// files hover.
+/// files hover. macOS has none, so a drag there shows where it would land
+/// only once the files are let go.
 pub struct Pointer {
     source: Source,
     /// The window's scale, from its physical pixels to its logical ones.
@@ -35,6 +36,12 @@ enum Source {
 }
 
 impl Pointer {
+    #[cfg(not(any(target_os = "linux", windows)))]
+    pub fn of(_window: &slint::winit_030::winit::window::Window) -> Option<Self> {
+        None
+    }
+
+    #[cfg(any(target_os = "linux", windows))]
     pub fn of(window: &slint::winit_030::winit::window::Window) -> Option<Self> {
         use slint::winit_030::winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
         let handle = window.window_handle().ok()?.as_raw();
@@ -66,7 +73,7 @@ impl Pointer {
 
     /// Where it is now, unless the platform won't say.
     pub fn at(&self) -> Option<Drag> {
-        let (x, y) = match &self.source {
+        let (x, y): (f64, f64) = match &self.source {
             #[cfg(target_os = "linux")]
             Source::X11(connection, window) => {
                 use x11rb::protocol::xproto::ConnectionExt;
@@ -88,6 +95,9 @@ impl Pointer {
                 }
                 (f64::from(point.x), f64::from(point.y))
             }
+            // No source on macOS, where `of` makes none.
+            #[cfg(not(any(target_os = "linux", windows)))]
+            _ => return None,
         };
         Some(Drag::Moved {
             x: x / self.scale,

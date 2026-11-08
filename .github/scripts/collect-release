@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# Gathers what build.yml uploaded, downloaded into DIST, into RELEASE, with
+# one SHA256SUMS.txt: `.github/scripts/collect-release DIST RELEASE`.
+set -euo pipefail
+dist=${1:?usage: collect-release DIST RELEASE} release=${2:?usage: collect-release DIST RELEASE}
+# Each system's job zips the commit's source with the commit's time on every
+# file; SOURCE.txt and each BUILD.json name the one file the release carries.
+sources=("$dist"/*/Yapfast-*-source.zip)
+for source in "${sources[@]:1}"; do
+  cmp "${sources[0]}" "$source"
+done
+mkdir -p "$release"
+mv "${sources[0]}" "$release/"
+mv "$dist"/linux/Yapfast-*.AppImage* "$dist"/linux/yapfast-*.pkg.tar.zst "$release/"
+mv "$dist"/windows/Yapfast-*-windows-x64.zip "$dist"/windows-installer/Yapfast-*-windows-x64-setup.exe "$release/"
+mv "$dist"/macos/Yapfast-*-macos-arm64.dmg "$release/"
+(cd "$release" && sha256sum Yapfast-* yapfast-*.pkg.tar.zst > SHA256SUMS.txt)
+ls -l "$release"

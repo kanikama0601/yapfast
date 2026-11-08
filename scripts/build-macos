@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# Builds the macOS release on a Mac, for Apple silicon: the Discord flavour,
+# as Yapfast.app in a disk image, in target/dist/macos. It needs Xcode's
+# command line tools, CMake, librsvg's rsvg-convert for the icon, and Skia's
+# third-party notices in a folder, which Linux's
+# `nix build path:./nix#skia-source` makes: `scripts/build-macos SKIA_SOURCE`.
+# Rust-skia's prebuilt Skia and LiveKit's prebuilt libwebrtc are downloaded
+# by their crates.
+set -euo pipefail
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
+skia_source=${1:?usage: scripts/build-macos SKIA_SOURCE}
+target=aarch64-apple-darwin
+rustup target add "$target"
+# Rust's own default for the target; the bundle's Info.plist says the same.
+export MACOSX_DEPLOYMENT_TARGET=11.0
+source scripts/release-env "$target"
+cargo build --locked --release --target "$target" --no-default-features --features desktop,discord
+python3 scripts/package-macos.py --skia-source "$skia_source"

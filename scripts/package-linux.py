@@ -14,7 +14,7 @@ import subprocess
 import tempfile
 import urllib.parse
 
-from release_package import ROOT, dependency_notices, digest, names_home, source_snapshot
+from release_package import REPOSITORY, ROOT, dependency_notices, digest, names_home, source_snapshot
 
 TARGET = "x86_64-unknown-linux-gnu"
 FEATURES = ["--no-default-features", "--features", "desktop,discord"]
@@ -69,9 +69,9 @@ def main():
         shutil.copy2(ROOT / "LICENSE", doc / "LICENSE")
         (doc / "SOURCE.txt").write_text(
             f"The source code of this build of Yapfast {version} is published with it:\n\n"
-            f"  https://github.com/yapfast/yapfast/releases/tag/v{version}\n"
+            f"  https://github.com/{REPOSITORY}/releases/tag/v{version}\n"
             f"  {source_path.name}, SHA-256 in BUILD.json\n\n"
-            "and in the repository, https://github.com/yapfast/yapfast. The licenses folder\n"
+            f"and in the repository, https://github.com/{REPOSITORY}. The licenses folder\n"
             "holds every dependency's own license and notices.\n",
             encoding="utf-8",
         )

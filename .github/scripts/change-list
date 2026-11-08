@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# The changes between two commits for a release's notes, by
+# .github/release-notes.jq, with a link to all of them:
+# `.github/scripts/change-list PREVIOUS COMMIT`, PREVIOUS a tag or a commit.
+# Needs GH_REPO and GH_TOKEN.
+# pipefail: a failed request fails the job rather than leaving the list empty.
+set -euo pipefail
+previous=${1:?usage: change-list PREVIOUS COMMIT} commit=${2:?usage: change-list PREVIOUS COMMIT}
+# The API lists at most 250 commits; the link has them all.
+gh api "repos/$GH_REPO/compare/$previous...$commit" | jq -r -f "$(dirname "${BASH_SOURCE[0]}")/../release-notes.jq"
+echo "All changes: https://github.com/$GH_REPO/compare/$previous...$commit"
