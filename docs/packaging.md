@@ -122,19 +122,28 @@ time on every file, so they make the same file;
 Windows installer and ZIP, the macOS disk image and the source snapshot.
 `SOURCE.txt` links to the repository the workflow runs in.
 
-A release of `main` is Actions, Release, Run workflow, choosing which part of
-the version to raise: from 0.3.0, `minor` (the default) makes 0.4.0, `patch`
-0.3.1 and `major` 1.0.0. `.github/workflows/release.yml` builds that version,
-and only once every build has passed commits it to `main` as
+Every push to `main` releases it, through `.github/workflows/release.yml`;
+Actions, Release, Run workflow releases it by hand. The commits since the
+latest release, or before the repository has one, since the commit that set
+the current version, choose the version, as Conventional Commits ask: a
+breaking change (`feat!:`, or a `BREAKING CHANGE:` line) raises the major
+version, or the minor one before 1.0, a `feat` the minor one, and anything
+else the patch, so from 0.3.0 a feature makes 0.4.0 and a fix 0.3.1. Run by
+hand, it can be told `patch`, `minor` or `major` instead. Merges and the
+release's own commits don't count, and with nothing else since the latest
+release it releases nothing. One release runs at a time: pushes meanwhile
+wait, and the newest of them releases all they brought. It builds that
+version, and only once every build has passed commits it to `main` as
 `chore(release): VERSION`, with the metainfo's release and the PKGBUILD's
 `pkgver` that `scripts/set-version` also writes, tags the commit `vVERSION`
-and publishes the files as the latest release. If commits reached `main`
-during the build, a merge puts the release's commit in its history. The notes,
-and the release's entry at the top of `CHANGELOG.md` in the same commit, list
-the commits since the latest release, or before the repository has one, since
-the commit that set the version it raises, each with its author's GitHub
-account: features and fixes by their Conventional Commit type, the rest
-folded away (`.github/scripts/change-list`, by `.github/release-notes.jq`).
+and publishes the files as the latest release. The workflow's own pushes
+start no workflow. If commits reached `main` during the build, a merge puts
+the release's commit in its history, and the push that brought them
+releases them next. The notes, and the release's entry at the top of
+`CHANGELOG.md` in the same commit, list the commits since the previous
+release, each with its author's GitHub account: features and fixes by their
+Conventional Commit type, the rest folded away (`.github/scripts/change-list`,
+by `.github/release-notes.jq`).
 
 A nightly of `main` is Actions, Nightly, Run workflow.
 `.github/workflows/nightly.yml` names it after the next minor version, the day
