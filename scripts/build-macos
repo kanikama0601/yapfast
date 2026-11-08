@@ -1,18 +1,24 @@
 #!/usr/bin/env bash
-# Builds the macOS release on a Mac, for Apple silicon: the Discord flavour,
-# as Yapfast.app in a disk image, in target/dist/macos. It needs Xcode's
-# command line tools, CMake, librsvg's rsvg-convert for the icon, and Skia's
-# third-party notices in a folder, which Linux's
-# `nix build path:./nix#skia-source` makes: `scripts/build-macos SKIA_SOURCE`.
-# Rust-skia's prebuilt Skia and LiveKit's prebuilt libwebrtc are downloaded
-# by their crates.
+# Builds the macOS release on a Mac: the Discord flavour, as Yapfast.app in a
+# disk image, in target/dist/macos, for Apple silicon (arm64) or Intel
+# (x86_64), by default the Mac's own. It needs Xcode's command line tools,
+# CMake, NASM for x264's assembly on Intel, librsvg's rsvg-convert for the
+# icon, and Skia's third-party notices in a folder, which Linux's
+# `nix build path:./nix#skia-source` makes:
+# `scripts/build-macos SKIA_SOURCE [arm64|x86_64]`. Rust-skia's prebuilt
+# Skia and LiveKit's prebuilt libwebrtc are downloaded by their crates.
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
-skia_source=${1:?usage: scripts/build-macos SKIA_SOURCE}
-target=aarch64-apple-darwin
+skia_source=${1:?usage: scripts/build-macos SKIA_SOURCE [arm64|x86_64]}
+case ${2:-$(uname -m)} in
+  arm64 | aarch64) target=aarch64-apple-darwin ;;
+  x86_64) target=x86_64-apple-darwin ;;
+  *) echo "usage: scripts/build-macos SKIA_SOURCE [arm64|x86_64]" >&2; exit 2 ;;
+esac
 rustup target add "$target"
-# Rust's own default for the target; the bundle's Info.plist says the same.
+# Rust's floor for Apple silicon, which the Intel build keeps too; the
+# bundle's Info.plist says the same.
 export MACOSX_DEPLOYMENT_TARGET=11.0
 source scripts/release-env "$target"
 cargo build --locked --release --target "$target" --no-default-features --features desktop,discord
-python3 scripts/package-macos.py --skia-source "$skia_source"
+python3 scripts/package-macos.py --target "$target" --skia-source "$skia_source"

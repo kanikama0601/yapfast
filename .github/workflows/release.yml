@@ -135,7 +135,7 @@ jobs:
             echo
             echo "- Linux: the AppImage, or on Arch Linux the .pkg.tar.zst, installed with \`sudo pacman -U\` and its link."
             echo "- Windows 10/11: the setup .exe, or the portable ZIP."
-            echo "- macOS 11 or later on Apple silicon: the .dmg. It's signed ad hoc and not notarized, so open Yapfast.app the first time with Control-click, Open."
+            echo "- macOS 11 or later: the arm64 .dmg for Apple silicon (M1 and later), the x64 one for Intel. They're signed ad hoc and not notarized, so open Yapfast.app the first time with Control-click, Open."
             echo
             echo "SHA256SUMS.txt holds each file's SHA-256."
           } > notes.md

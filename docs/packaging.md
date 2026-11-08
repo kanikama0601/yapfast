@@ -78,14 +78,17 @@ repository, so `pacman -Syu` doesn't update it.
 
 ## macOS disk image
 
-`scripts/build-macos SKIA_SOURCE` makes the macOS release on a Mac, for Apple
-silicon, in `target/dist/macos`: `Yapfast-VERSION-macos-arm64.dmg` and the
-source snapshot. It builds the Discord flavour for `aarch64-apple-darwin` with
-`scripts/release-env`'s path mappings and macOS 11 as the oldest system, Rust's
-own floor for the target. Rust-skia's prebuilt Skia for Metal and OpenGL and
-LiveKit's prebuilt libwebrtc come from their crates' downloads; FFmpeg's
-hardware encoders have no macOS configuration, so the build goes without them,
-as the build scripts allow for any target without a `gen/` folder.
+`scripts/build-macos SKIA_SOURCE [arm64|x86_64]` makes the macOS release on a
+Mac, in `target/dist/macos`: `Yapfast-VERSION-macos-arm64.dmg` for Apple
+silicon or `Yapfast-VERSION-macos-x64.dmg` for Intel, by default the Mac's
+own, and the source snapshot. It builds the Discord flavour for
+`aarch64-apple-darwin` or `x86_64-apple-darwin` with `scripts/release-env`'s
+path mappings and macOS 11 as the oldest system for both, Rust's own floor for
+Apple silicon. Rust-skia's prebuilt Skia for Metal and OpenGL and LiveKit's
+prebuilt libwebrtc come from their crates' downloads; FFmpeg's hardware
+encoders have no macOS configuration, so the build goes without them, as the
+build scripts allow for any target without a `gen/` folder. On Intel, NASM
+assembles x264's x86-64 code as Mach-O.
 `scripts/package-macos.py` puts the executable in `Yapfast.app` with an
 `Info.plist` (bundle ID `io.github.yapfast.Yapfast`, and the reasons macOS
 shows when a call first opens the microphone or camera), the icon drawn from
@@ -95,7 +98,7 @@ notices, `THIRD-PARTY.json`, `SOURCE.txt` and `BUILD.json` in
 notices, its own among them, come from the pinned Skia source: SKIA_SOURCE is
 a folder of its notices, which Linux's `nix build path:./nix#skia-source`
 makes. The bundle is signed ad hoc, since Apple silicon runs only signed code,
-and isn't notarized, which takes a paid Apple account: macOS asks before
+and Intel's the same way, and isn't notarized, which takes a paid Apple account: macOS asks before
 opening it the first time, after a Control-click, Open. `hdiutil` packs it
 with a link to `/Applications` into an LZMA disk image. Nobody has run this
 build on a Mac yet.
@@ -113,13 +116,14 @@ cargo-xwin's MSVC files and the compiled Rust dependencies
 compiles in the Nix sandbox, which can't reach one. Wine doesn't start on the
 runner, so a job on a Windows runner compiles the installer from the Windows
 ZIP, with the Inno Setup `scripts/package-windows.py` pins and the
-definitions it passes. A job on a macOS runner (Apple silicon) runs
-`scripts/build-macos`, with Skia's notices from a small Linux job that builds
+definitions it passes. Two macOS jobs run `scripts/build-macos`, one on an
+Apple silicon runner and one on an Intel runner, so each build script runs on
+the processor it builds for, with Skia's notices from a small Linux job that builds
 `path:./nix#skia-source`. Every job zips the source snapshot with the commit's
 time on every file, so they make the same file;
 `.github/scripts/collect-release` checks that, keeps one, and writes one
 `SHA256SUMS.txt` for the AppImage, its `.zsync` file, the Arch package, the
-Windows installer and ZIP, the macOS disk image and the source snapshot.
+Windows installer and ZIP, the two macOS disk images and the source snapshot.
 `SOURCE.txt` links to the repository the workflow runs in.
 
 Every push to `main` releases it, through `.github/workflows/release.yml`;

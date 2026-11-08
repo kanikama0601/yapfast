@@ -13,6 +13,6 @@ mkdir -p "$release"
 mv "${sources[0]}" "$release/"
 mv "$dist"/linux/Yapfast-*.AppImage* "$dist"/linux/yapfast-*.pkg.tar.zst "$release/"
 mv "$dist"/windows/Yapfast-*-windows-x64.zip "$dist"/windows-installer/Yapfast-*-windows-x64-setup.exe "$release/"
-mv "$dist"/macos/Yapfast-*-macos-arm64.dmg "$release/"
+mv "$dist"/macos-*/Yapfast-*-macos-*.dmg "$release/"
 (cd "$release" && sha256sum Yapfast-* yapfast-*.pkg.tar.zst > SHA256SUMS.txt)
 ls -l "$release"
