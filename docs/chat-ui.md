@@ -155,6 +155,10 @@ errors make it taller than the minimum window. SSO and OAuth are still pending.
   and every category of the `emojis` crate up to Unicode 15.0, which Noto Color
   Emoji and Windows 11 draw; Enter picks the first match. Clicking an existing
   reaction adds or removes yours.
+- A sticker picker beside the GIFs, on Discord: every server's stickers, the
+  open server's first, then Discord's own packs, searchable by name or related
+  emoji; a click sends one as a message of its own. See
+  [Stickers](discord/messages.md#stickers).
 - A GIF picker next to the emoji button, on Discord: a search over Klipy,
   trending terms and favourites, as in Discord's client. A click sends a GIF,
   Shift and a click puts it in the message, and a star keeps it among the
@@ -164,9 +168,9 @@ errors make it taller than the minimum window. SSO and OAuth are still pending.
   videos and small files; a larger GIF's is made when its tile first shows. Each of the home's trending terms shows one GIF, and those are fetched
   ahead into a cache of their own, so the home paints at once. Its left
   edge drags it wider, as Discord's does: the right edge and the height stay,
-  and the edge stops 8px past the server list. The GIFs and the Emoji share
+  and the edge stops 8px past the server list. The GIFs, the Stickers and the Emoji share
   that window and its width: the GIFs' grid fits another column for every
-  212px, and the emoji's another of Discord's 56px buttons a row. The buttons
+  212px, the stickers' another 96px sticker for every 100px, and the emoji's another of Discord's 56px buttons a row. The buttons
   keep their size and their spacing as it widens, so what the width has over
   stays at the row's end. Each emoji is drawn from Twemoji's picture of it,
   which is the artwork Discord's client uses and which the program carries

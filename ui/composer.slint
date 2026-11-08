@@ -82,7 +82,8 @@ export component Composer inherits Rectangle {
     // rather than text, so the application looks first and, finding text,
     // pastes it with paste-text.
     callback paste;
-    // Ctrl+G and Ctrl+E, as Discord's: open the GIFs, 0, or the emoji, 1.
+    // Ctrl+G, Ctrl+S and Ctrl+E, as Discord's: open the GIFs, 0, the stickers, 2,
+    // or the emoji, 1.
     callback expressions(int);
     public function paste-text() { input.paste(); }
     public function focus-input() { input.focus(); }
@@ -137,9 +138,9 @@ export component Composer inherits Rectangle {
                 root.paste();
                 return accept;
             }
-            if (event.text == "g" || event.text == "G" || event.text == "e" || event.text == "E")
+            if (event.text == "g" || event.text == "G" || event.text == "e" || event.text == "E" || event.text == "s" || event.text == "S")
                 && event.modifiers.control && !event.modifiers.alt && !event.modifiers.shift && root.enabled {
-                root.expressions(event.text == "g" || event.text == "G" ? 0 : 1);
+                root.expressions(event.text == "g" || event.text == "G" ? 0 : event.text == "s" || event.text == "S" ? 2 : 1);
                 return accept;
             }
             return reject;

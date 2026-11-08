@@ -57,6 +57,7 @@ mod profile;
 mod refresh;
 mod server_settings;
 mod shell;
+mod stickers;
 mod theme;
 mod tiles;
 mod title_bar;
@@ -1744,6 +1745,9 @@ struct Adapter {
     link_code: Option<(String, slint::Image)>,
     /// What the GIF picker's grid shows.
     gifs: gifs::Shown,
+    /// Discord's own sticker packs as the sticker picker's rows last showed
+    /// them, so their coming builds the rows again.
+    sticker_packs: Arc<Vec<yapfast_core::chat::StickerSet>>,
     /// A Discord link handed to this start before Discord is online.
     pending_link: Option<String>,
 }
@@ -1949,6 +1953,7 @@ impl Adapter {
                 #[cfg(feature = "discord")]
                 link_code: None,
                 gifs: gifs::Shown::default(),
+                sticker_packs: Arc::default(),
                 pending_link: None,
             })
         }))

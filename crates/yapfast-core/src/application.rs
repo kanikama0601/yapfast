@@ -45,6 +45,7 @@ mod scheduled_event;
 mod server;
 mod server_settings;
 mod session;
+mod stickers;
 mod threads;
 
 pub use arrange::{Landing, MoveSync};
@@ -630,6 +631,9 @@ pub struct AppState {
     pub gifs: GifPicker,
     pub favorite_gifs: Option<Vec<chat::FavoriteGif>>,
     pub favorite_gifs_changed: u32,
+    /// Discord's own sticker packs, which the sticker picker lists after
+    /// the servers' stickers, once fetched; shared with what shows them.
+    pub sticker_packs: Arc<Vec<chat::StickerSet>>,
     pub add_people: Option<AddPeople>,
     /// The selected Discord channel's topic, once the backend has said it.
     pub topic: Option<Arc<chat::Topic>>,
@@ -1538,6 +1542,10 @@ pub enum Action {
         url: String,
         insert: bool,
     },
+    /// Send a sticker from the sticker picker, by its id.
+    PickSticker(String),
+    /// The sticker picker shows: Discord's own packs load, if they haven't.
+    LoadStickerPacks,
     /// Add a GIF to the favourites, by its page, or take it out.
     FavoriteGif(String),
     /// The same for a message's GIF, by item and attachment.
@@ -2045,6 +2053,9 @@ pub struct Application {
     sent_draft: Option<String>,
     /// The files sent with it, which leave the composer once sent.
     sent_files: Vec<PathBuf>,
+    /// Discord's own sticker packs were asked for, or came: the picker asks
+    /// once a session, and again only after it failed.
+    sticker_packs_asked: bool,
     /// The message [`Action::Jump`] or [`Action::JumpToUnread`] brings into
     /// view once the timeline has it.
     seeking: Option<Seeking>,
@@ -2786,6 +2797,8 @@ impl Application {
             Action::SearchGifCategory(name) => self.search_gif_category(name),
             Action::GifsShown { shown, near_end } => self.gifs_shown(shown, near_end),
             Action::PickGif { url, insert } => self.pick_gif(url, insert),
+            Action::PickSticker(id) => self.pick_sticker(id),
+            Action::LoadStickerPacks => self.load_sticker_packs(),
             Action::FavoriteGif(url) => self.favorite_gif(url),
             Action::FavoriteMessageGif { item, index } => self.favorite_message_gif(item, index),
             Action::LoadFavoriteGifs => self.load_favorite_gifs(),
@@ -3464,6 +3477,7 @@ impl Application {
             Event::GifCategories(result) => self.gif_categories_came(result),
             Event::Gifs { query, result } => self.gifs_came(query, result),
             Event::GifSuggestions { query, terms } => self.gif_suggestions_came(query, terms),
+            Event::StickerPacks(packs) => self.sticker_packs_came(packs),
             Event::FavoriteGifs(result) => return self.favorite_gifs_came(result),
             Event::KeptFavoriteGifs(favorites) => self.kept_favorite_gifs_came(favorites),
             Event::PlacesUsed(result) => self.state.places_used.came(result),

@@ -8,7 +8,34 @@ use crate::chat::{FavoriteGif, Gif, GifCategory};
 /// client may be a full-size `.gif`.
 const MAX_GIF_BYTES: usize = 8 * 1024 * 1024;
 
-/// Carries out a GIF picker command, or gives back any other.
+/// One of Discord's own sticker packs as the sticker picker lists it, under
+/// its name with its cover sticker for an icon. Anyone may send its
+/// stickers anywhere.
+fn sticker_set(pack: &yapfast_discord::ready::StickerPack) -> crate::chat::StickerSet {
+    let cover = pack
+        .cover
+        .as_ref()
+        .and_then(|cover| pack.stickers.iter().find(|sticker| &sticker.id == cover))
+        .or(pack.stickers.first());
+    crate::chat::StickerSet {
+        id: pack.id.clone(),
+        server: pack.name.clone(),
+        icon: cover.map(yapfast_discord::ready::Sticker::picture),
+        stickers: pack
+            .stickers
+            .iter()
+            .map(|sticker| crate::chat::PickerSticker {
+                id: sticker.id.clone(),
+                name: sticker.name.clone(),
+                tags: sticker.tags.clone(),
+                picture: sticker.picture(),
+                usable: true,
+            })
+            .collect(),
+    }
+}
+
+/// Carries out a GIF or sticker picker command, or gives back any other.
 pub(super) fn command(
     command: Command,
     discord: Result<&Discord, &str>,
@@ -20,6 +47,7 @@ pub(super) fn command(
     let discord = match (&command, discord) {
         (
             DiscordCommand::GifCategories
+            | DiscordCommand::StickerPacks
             | DiscordCommand::Gifs(_)
             | DiscordCommand::GifSuggestions(_)
             | DiscordCommand::GifPicked { .. }
@@ -31,6 +59,10 @@ pub(super) fn command(
         ) => discord.clone(),
         (DiscordCommand::GifCategories, Err(why)) => {
             let _ = events.send(Event::GifCategories(Err(why.into())));
+            return None;
+        }
+        (DiscordCommand::StickerPacks, Err(why)) => {
+            let _ = events.send(Event::StickerPacks(Err(why.into())));
             return None;
         }
         (DiscordCommand::Gifs(query), Err(why)) => {
@@ -131,6 +163,16 @@ pub(super) fn command(
                     .map(|gifs| gifs.into_iter().map(gif).collect())
                     .map_err(|error| format!("Couldn't load GIFs: {error}"));
                 let _ = events.send(Event::Gifs { query, result });
+            });
+        }
+        DiscordCommand::StickerPacks => {
+            tokio::spawn(async move {
+                let packs = discord
+                    .sticker_packs()
+                    .await
+                    .map(|packs| packs.iter().map(sticker_set).collect())
+                    .map_err(|error| format!("Could not load Discord's stickers: {error}"));
+                let _ = events.send(Event::StickerPacks(packs));
             });
         }
         DiscordCommand::GifSuggestions(query) => {

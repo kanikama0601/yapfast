@@ -5582,6 +5582,143 @@ async fn keeps_emoji_and_stickers_as_discords_client_does() {
     post_control(server, "/_control/guild-reset", "");
 }
 
+/// The sticker picker's stickers, from READY and GUILD_STICKERS_UPDATE, and
+/// sending one as Discord's client does: `sticker_ids` and nothing else,
+/// keeping a reply.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "starts testing/fake_discord.ts with bun; run scripts/test-fake-discord"]
+async fn sends_stickers_as_discords_client_does() {
+    let fixture = Fixture::start("sends_stickers_as_discords_client_does").await;
+    let discord = &fixture.discord;
+    let (server, guild, general) = (
+        fixture.server,
+        fixture.guild.as_str(),
+        fixture.general.as_str(),
+    );
+    let code = |error: anyhow::Error| yapfast_discord::api::code(&error);
+    assert!(fixture.snapshot.servers[0].stickers.is_empty());
+    post_control(server, "/_control/stickers", "");
+    let snapshot = snapshot_where(discord, |snapshot| {
+        snapshot
+            .servers
+            .iter()
+            .any(|known| known.id == guild && !known.stickers.is_empty())
+    })
+    .await;
+    let stickers = &snapshot.servers[0].stickers;
+    let names: Vec<_> = stickers
+        .iter()
+        .map(|sticker| (sticker.name.as_str(), sticker.format))
+        .collect();
+    assert_eq!(names, [("Bounce", 4), ("Lottie", 3), ("Wave", 1)]);
+    let wave = stickers
+        .iter()
+        .find(|sticker| sticker.name == "Wave")
+        .unwrap();
+    assert_eq!(wave.tags, "👋");
+
+    let mut live = discord.live();
+    let first = yapfast_discord::message::nonce();
+    let earlier = discord
+        .send(guild, general, "look", sending(&first, None), vec![])
+        .await
+        .unwrap();
+    let nonce = yapfast_discord::message::nonce();
+    let sent = discord
+        .send(
+            guild,
+            general,
+            "",
+            yapfast_discord::api::Sending {
+                sticker: Some(&wave.id),
+                ..sending(&nonce, Some(&earlier.id))
+            },
+            vec![],
+        )
+        .await
+        .unwrap();
+    assert!(sent.content.is_empty());
+    assert!(sent.reply.is_some(), "a reply keeps its reference");
+    let shown: Vec<_> = sent
+        .attachments
+        .iter()
+        .map(|attachment| (attachment.shown, attachment.name.as_str()))
+        .collect();
+    assert_eq!(shown, [(Shown::Sticker, "Wave")]);
+    let echoed = live_where(&mut live, |event| match event {
+        Live::Created(message) if message.id == sent.id => Some(message),
+        _ => None,
+    })
+    .await;
+    assert_eq!(echoed.attachments[0].shown, Shown::Sticker);
+    let listed: serde_json::Value =
+        serde_json::from_str(&control(server, "GET", "/_control/stickers-sent", "")).unwrap();
+    assert_eq!(
+        listed,
+        serde_json::json!([{"channel": general, "ids": [wave.id]}])
+    );
+
+    // Without Nitro, only in its own server's channels; and an empty message
+    // isn't one.
+    let (dm, nonce) = ("1400000000000000120", yapfast_discord::message::nonce());
+    let elsewhere = discord
+        .send(
+            PRIVATE,
+            dm,
+            "",
+            yapfast_discord::api::Sending {
+                sticker: Some(&wave.id),
+                ..sending(&nonce, None)
+            },
+            vec![],
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(code(elsewhere), Some(50081));
+
+    // Discord's own packs, asked for once a session, in their own order and
+    // without an empty one; anyone may send theirs anywhere.
+    let packs = discord.sticker_packs().await.unwrap();
+    assert!(Arc::ptr_eq(&packs, &discord.sticker_packs().await.unwrap()));
+    assert_eq!(
+        control(server, "GET", "/_control/sticker-packs-asked", ""),
+        "1"
+    );
+    assert_eq!(packs.len(), 1);
+    assert_eq!(packs[0].name, "Wumpus Beyond");
+    assert_eq!(packs[0].cover.as_deref(), Some("1400000000000000332"));
+    let names: Vec<_> = packs[0]
+        .stickers
+        .iter()
+        .map(|sticker| sticker.name.as_str())
+        .collect();
+    assert_eq!(names, ["Wumpus Hi", "Wumpus Wave", "Wumpus Spin"]);
+    let hi = &packs[0].stickers[0];
+    assert_eq!(discord.known_sticker(&hi.id).as_ref(), Some(hi));
+    assert_eq!(discord.known_sticker(&wave.id).as_ref(), Some(wave));
+    let in_dm = discord
+        .send(
+            PRIVATE,
+            dm,
+            "",
+            yapfast_discord::api::Sending {
+                sticker: Some(&hi.id),
+                ..sending(&nonce, None)
+            },
+            vec![],
+        )
+        .await
+        .unwrap();
+    assert_eq!(in_dm.attachments[0].name, "Wumpus Hi");
+    assert_eq!(in_dm.attachments[0].shown, Shown::Sticker);
+    let empty = discord
+        .send(guild, general, "", sending(&nonce, None), vec![])
+        .await
+        .unwrap_err();
+    assert_eq!(code(empty), Some(50006));
+    post_control(server, "/_control/guild-reset", "");
+}
+
 /// Transfer Ownership and Delete Server, as the server's owner: by the code
 /// Discord emails without 2FA, or by confirming with it; part of
 /// [`talks_to_the_fake_server`].
@@ -6439,5 +6576,6 @@ fn sending<'a>(nonce: &'a str, reply: Option<&'a str>) -> yapfast_discord::api::
         reply,
         ping_reply: true,
         silent: false,
+        sticker: None,
     }
 }

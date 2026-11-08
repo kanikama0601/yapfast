@@ -165,7 +165,8 @@ they do in Discord.
   mute or close a DM from its menu, leave a group DM, and accept or ignore
   message requests.
 - **Messages** you can send, reply to, edit, react to, pin, forward and attach
-  files to, with Markdown, embeds, custom emoji, stickers and spoilers.
+  files to, with Markdown, embeds, custom emoji, stickers and spoilers, and
+  stickers and GIFs to send from the picker beside the emoji.
   Discord's own links to servers, channels, messages and profiles open in
   Yapfast, including one handed to it by the desktop.
 - **Threads**: start one from a message, browse a channel's threads, join or

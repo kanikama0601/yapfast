@@ -7163,7 +7163,7 @@ fn resizing_the_window_carries_the_pickers_room_with_the_composer() {
     };
     // The GIF button opens the picker with 978px of room: up to 8px right of
     // the server list, which is 80px from the window's left edge.
-    click(992., 710.);
+    click(966., 710.);
     let room = window.get_picker_room();
     assert_eq!(room, 978.);
     // A window 200px wider carries the composer's buttons with it, and the
@@ -7478,7 +7478,7 @@ fn dragging_the_pickers_left_edge_widens_it_no_further_than_the_server_list() {
     };
     // The GIF button in the composer opens the picker, 498px wide, its right
     // edge on the emoji button's.
-    click(992., 710.);
+    click(966., 710.);
     assert_eq!(window.get_picker_shown(), 498.);
     assert_eq!(window.get_gif_grid_width(), 474.);
     // Room for it up to 8px right of the server list, which is 80px from the
@@ -7573,9 +7573,10 @@ fn dragging_the_pickers_left_edge_widens_it_no_further_than_the_server_list() {
     assert_eq!(window.get_picker_width(), 648.);
     assert_eq!(right_edge(), 1058.);
     assert_eq!(*chosen.borrow(), [648.]);
-    // The emoji show at the width dragged too: the two tabs share the window.
+    // The emoji show at the width dragged too: the tabs share the window. Their
+    // tab is the third, after GIFs and Stickers.
     let tabs = found().2 + 30.;
-    click(410. + 110., tabs);
+    click(410. + 195., tabs);
     assert_eq!(panel(), (410., 648.));
     assert_eq!(window.get_emoji_panel_width(), 648.);
     // A click on the panel's empty places keeps it open; one beside it, in
@@ -7586,7 +7587,7 @@ fn dragging_the_pickers_left_edge_widens_it_no_further_than_the_server_list() {
     let inner = i_slint_core::window::WindowInner::from_pub(window.window());
     assert!(inner.active_popups().is_empty());
     // It opens again on the GIFs, at the width dragged.
-    click(992., 710.);
+    click(966., 710.);
     assert_eq!(panel(), (410., 648.));
     // Back to the right, the edge follows the pointer to the width it opens
     // at, and no further.

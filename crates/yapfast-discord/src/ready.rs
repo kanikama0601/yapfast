@@ -182,6 +182,9 @@ pub struct Server {
     pub mfa_level: u8,
     /// Its custom emoji, by name.
     pub emojis: Arc<Vec<Emoji>>,
+    /// Its stickers, by name, as the sticker picker offers them.
+    #[serde(default)]
+    pub stickers: Arc<Vec<Sticker>>,
     /// When this account joined it, as Discord's ISO 8601 time.
     pub joined_at: Option<String>,
     /// Out of reach in a Discord outage: still listed, with what was last
@@ -219,6 +222,91 @@ pub fn emojis(list: &Value) -> Vec<Emoji> {
         .collect();
     emojis.sort_by_key(|emoji| emoji.name.to_lowercase());
     emojis
+}
+
+/// A server's sticker, as the sticker picker needs it.
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Sticker {
+    pub id: String,
+    pub name: String,
+    /// What a search finds it by besides its name: its related emoji, or
+    /// words.
+    pub tags: String,
+    /// Discord's `format_type`: 1 PNG, 2 APNG, 3 Lottie, 4 GIF.
+    pub format: u64,
+    /// Usable: a server that loses boosts keeps stickers it no longer has
+    /// room for, unavailable.
+    pub available: bool,
+}
+
+impl Sticker {
+    /// Its picture, as [`sticker`] addresses it.
+    pub fn picture(&self) -> String {
+        sticker(&self.id, self.format)
+    }
+}
+
+/// A server's sticker list, from a guild object or GUILD_STICKERS_UPDATE.
+pub fn stickers(list: &Value) -> Vec<Sticker> {
+    let mut stickers: Vec<Sticker> = list
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(parse_sticker)
+        .collect();
+    stickers.sort_by_key(|sticker| sticker.name.to_lowercase());
+    stickers
+}
+
+fn parse_sticker(sticker: &Value) -> Option<Sticker> {
+    Some(Sticker {
+        id: sticker["id"].as_str()?.to_owned(),
+        name: sticker["name"].as_str()?.to_owned(),
+        tags: sticker["tags"].as_str().unwrap_or_default().to_owned(),
+        format: sticker["format_type"].as_u64().unwrap_or(1),
+        available: sticker["available"].as_bool().unwrap_or(true),
+    })
+}
+
+/// One of Discord's own sticker packs, which everyone may send anywhere.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct StickerPack {
+    pub id: String,
+    pub name: String,
+    /// The sticker that stands for it, by id, as its icon.
+    pub cover: Option<String>,
+    /// In the pack's own order.
+    pub stickers: Vec<Sticker>,
+}
+
+/// Discord's own sticker packs, as `GET /sticker-packs` gives them: each
+/// pack's stickers in its `sort_value` order, and none left empty.
+pub fn sticker_packs(answer: &Value) -> Vec<StickerPack> {
+    answer["sticker_packs"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|pack| {
+            let mut sorted: Vec<(u64, Sticker)> = pack["stickers"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(|sticker| {
+                    let order = sticker["sort_value"].as_u64().unwrap_or(u64::MAX);
+                    Some((order, parse_sticker(sticker)?))
+                })
+                .filter(|(_, sticker)| sticker.available)
+                .collect();
+            sorted.sort_by_key(|(order, _)| *order);
+            let stickers: Vec<Sticker> = sorted.into_iter().map(|(_, sticker)| sticker).collect();
+            (!stickers.is_empty()).then(|| StickerPack {
+                id: pack["id"].as_str().unwrap_or_default().to_owned(),
+                name: pack["name"].as_str().unwrap_or_default().to_owned(),
+                cover: pack["cover_sticker_id"].as_str().map(str::to_owned),
+                stickers,
+            })
+        })
+        .collect()
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -1232,6 +1320,7 @@ pub fn server(guild: &Value) -> Option<Server> {
             .or_else(|| guild["properties"]["mfa_level"].as_u64())
             .map_or(0, |level| u8::try_from(level).unwrap_or(1)),
         emojis: Arc::new(emojis(&guild["emojis"])),
+        stickers: Arc::new(stickers(&guild["stickers"])),
         joined_at: guild["joined_at"].as_str().map(str::to_owned),
         default_level: Level::from(&guild["properties"]["default_message_notifications"])
             .or_else(|| Level::from(&guild["default_message_notifications"]))
@@ -1522,6 +1611,30 @@ mod tests {
     use serde_json::json;
 
     use super::*;
+
+    #[test]
+    fn sticker_packs_keep_their_own_order_and_drop_empty_ones() {
+        let packs = sticker_packs(&serde_json::json!({"sticker_packs": [
+            {"id": "1", "name": "Wumpus", "cover_sticker_id": "12", "stickers": [
+                {"id": "11", "name": "Wave", "tags": "wave", "format_type": 3, "sort_value": 2},
+                {"id": "12", "name": "Hi", "tags": "👋", "format_type": 1, "sort_value": 1},
+                {"id": "13", "name": "Gone", "format_type": 1, "sort_value": 0, "available": false},
+            ]},
+            {"id": "2", "name": "Empty", "stickers": []},
+        ]}));
+        assert_eq!(packs.len(), 1);
+        assert_eq!(
+            (packs[0].name.as_str(), packs[0].cover.as_deref()),
+            ("Wumpus", Some("12"))
+        );
+        let names: Vec<_> = packs[0]
+            .stickers
+            .iter()
+            .map(|sticker| sticker.name.as_str())
+            .collect();
+        assert_eq!(names, ["Hi", "Wave"]);
+        assert_eq!(packs[0].stickers[1].format, STICKER_LOTTIE);
+    }
 
     #[test]
     fn only_lottie_sticker_addresses_are_lottie() {

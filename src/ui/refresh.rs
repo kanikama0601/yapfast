@@ -323,6 +323,7 @@ impl Adapter {
         self.show_dialogs(window);
         self.show_reactions(window);
         self.show_gifs(window);
+        self.show_stickers(window);
         self.show_emoji_card(window);
         self.show_emoji_animations(window);
         self.show_composer(window);

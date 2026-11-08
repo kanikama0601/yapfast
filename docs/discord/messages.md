@@ -538,6 +538,37 @@ its desktop client does:
   The picture downloads to disk as it comes, so a full-size GIF of tens of
   megabytes takes no memory, and the thumbnail plays from its file.
 
+## Stickers
+
+The sticker button between the GIF and emoji buttons, or Ctrl+S, opens the
+same picker on its Stickers tab, between GIFs and Emoji, as Discord's does.
+
+- It lists every server's stickers under the server's name, the open
+  server's first, each server's by name, then Discord's own packs, as
+  Discord's picker does. Yapfast learns the servers' from READY's guilds
+  (`stickers`) and keeps them current from GUILD_STICKERS_UPDATE. A sticker a
+  server keeps unavailable, as one that lost its boosts does, isn't listed.
+- Discord's own packs come from `GET /sticker-packs` the first time the
+  Stickers tab shows, once a session as Discord's client asks, and join the
+  list when they come; a failed answer is asked for again at the next look.
+  Each pack lists under its name, its stickers in their `sort_value` order,
+  and a pack with none to send is left out. Anyone may send them anywhere,
+  DMs too, without Nitro.
+- The search finds a sticker by its name or its tags, the related emoji or
+  words, as you type. Enter sends the first match this account may send.
+- A click sends the sticker as a message of its own,
+  `POST /channels/{id}/messages` with `sticker_ids: [id]` and empty content,
+  keeping a reply that was being written and leaving the composer's text. It
+  shows at once as it will once sent, then as Discord echoes it.
+- Of the servers' stickers, without Nitro only the open server's may be
+  sent, in its own channels; the rest show faded, with "needs Nitro here" in
+  their tooltip, and a click does nothing. With Nitro any server's go
+  anywhere.
+- The tiles show stills, 96px, as pictures through `PictureStore`, fetched
+  only as rows show and kept in the disk cache. A Lottie sticker's first
+  frame is drawn by ThorVG, as in messages. The rows go when the picker
+  closes or shows another tab.
+
 ## Jumping to a message
 
 A reply's quote, a pin, a search result and the bar over the "New" divider

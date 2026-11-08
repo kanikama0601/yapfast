@@ -1,0 +1,126 @@
+import { Theme, Tip } from "theme.slint";
+import { TextField, PictureStore } from "controls.slint";
+import { ListView } from "scrollview.slint";
+
+/// A sticker in the sticker picker: its id, which sending names, and its
+/// picture's address, which `PictureStore` fills.
+export struct StickerCell { id: string, name: string, picture-url: string, usable: bool }
+/// A server's name over its stickers, or up to a row's worth of them.
+export struct StickerRow { heading: string, cells: [StickerCell] }
+
+// A sticker's tile: its picture, a quiet square until it arrives, and its
+// name in a tooltip. One this account may not send here shows faded, as
+// Discord's picker shows them, and a click does nothing.
+component StickerTile inherits Rectangle {
+    in property <StickerCell> sticker;
+    callback clicked;
+    property <string> tip: root.sticker.usable ? root.sticker.name : root.sticker.name + " (needs Nitro here)";
+    property <image> picture: PictureStore.picture(root.sticker.picture-url, PictureStore.revision);
+    function request-picture() {
+        if root.sticker.picture-url != "" && root.picture.width == 0 {
+            PictureStore.request(root.sticker.picture-url);
+        }
+    }
+    init => { root.request-picture(); }
+    changed picture => { root.request-picture(); }
+    width: 96px; height: 96px; border-radius: 8px;
+    background: touch.has-hover && root.sticker.usable ? Theme.hover : transparent;
+    accessible-role: button;
+    accessible-label: root.sticker.name;
+    accessible-enabled: root.sticker.usable;
+    accessible-action-default => { if root.sticker.usable { root.clicked(); } }
+    if root.picture.width == 0: Rectangle {
+        x: 8px; y: 8px; width: parent.width - 16px; height: parent.height - 16px;
+        border-radius: 8px; background: Theme.sunken;
+    }
+    Image {
+        x: 8px; y: 8px; width: parent.width - 16px; height: parent.height - 16px;
+        source: root.picture; image-fit: contain;
+        opacity: root.sticker.usable ? 1 : 0.35;
+    }
+    touch := TouchArea {
+        mouse-cursor: root.sticker.usable ? MouseCursor.pointer : MouseCursor.not-allowed;
+        clicked => {
+            if root.sticker.usable { Tip.text = ""; root.clicked(); }
+        }
+        changed has-hover => {
+            if self.has-hover {
+                Tip.text = root.tip; Tip.side = 0;
+                Tip.x = root.absolute-position.x + root.width / 2; Tip.y = root.absolute-position.y;
+            } else if Tip.text == root.tip {
+                Tip.text = "";
+            }
+        }
+    }
+}
+
+// The sticker picker, as Discord's: a search by name or related emoji, and
+// every server's stickers under its name, the open server's first. A click
+// sends a sticker as a message of its own.
+export component StickerPicker inherits VerticalLayout {
+    in property <[StickerRow]> rows;
+    in-out property <string> query;
+    /// The first sticker shown that this account may send, by id, which
+    /// Enter sends.
+    in property <string> first-usable;
+    callback search(string);
+    callback pick(string);
+    callback close;
+    // The search takes the keys once the picker shows.
+    Timer {
+        interval: 1ms; running: true;
+        triggered => { self.running = false; field.focus-input(); }
+    }
+    spacing: 0px;
+    FocusScope {
+        vertical-stretch: 0;
+        key-pressed(event) => {
+            if event.text == Key.Escape { root.close(); return accept; }
+            if (event.text == "s" || event.text == "S") && event.modifiers.control {
+                root.close();
+                return accept;
+            }
+            return reject;
+        }
+        HorizontalLayout {
+            padding-left: 16px; padding-right: 16px; padding-bottom: 12px;
+            field := TextField {
+                min-height: 34px; text-size: 15px; pad: 10px; fill: Theme.sunken;
+                placeholder: "Find stickers"; label: self.placeholder;
+                text <=> root.query;
+                edited(text) => { root.search(text); }
+                // Enter sends the first match this account may send.
+                accepted => {
+                    if root.query != "" && root.first-usable != "" { root.pick(root.first-usable); }
+                }
+            }
+        }
+    }
+    if root.rows.length > 0: ListView {
+        vertical-stretch: 1;
+        for row in root.rows: VerticalLayout {
+            padding-left: 12px; padding-right: 12px;
+            if row.heading != "": HorizontalLayout {
+                height: 32px; padding-left: 4px; padding-bottom: 4px;
+                Text {
+                    text: row.heading; color: Theme.muted; font-size: 12px; font-weight: 700;
+                    letter-spacing: 0.6px; vertical-alignment: bottom; overflow: elide;
+                }
+            }
+            if row.cells.length > 0: HorizontalLayout {
+                alignment: start; spacing: 4px; padding-bottom: 4px;
+                for cell in row.cells: StickerTile {
+                    sticker: cell;
+                    clicked => { root.pick(cell.id); }
+                }
+            }
+        }
+    }
+    if root.rows.length == 0: HorizontalLayout {
+        padding: 24px; vertical-stretch: 1;
+        Text {
+            text: root.query == "" ? "None of your servers has stickers yet." : "No stickers match \"" + root.query + "\".";
+            color: Theme.muted; font-size: 15px; wrap: word-wrap; horizontal-alignment: center;
+        }
+    }
+}

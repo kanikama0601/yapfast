@@ -30,6 +30,8 @@ pub struct Sending<'a> {
     pub ping_reply: bool,
     /// Notifies nobody, as `@silent` does.
     pub silent: bool,
+    /// A sticker it carries, by id, as the sticker picker sends one.
+    pub sticker: Option<&'a str>,
 }
 
 /// A poll to post, as Discord's "Create a Poll" dialog makes it.
@@ -533,6 +535,9 @@ impl Api {
         }
         if !uploads.is_empty() {
             body["attachments"] = attachments(uploads);
+        }
+        if let Some(sticker) = options.sticker {
+            body["sticker_ids"] = json!([sticker]);
         }
         if let Some(reply) = options.reply {
             body["message_reference"] = json!({
@@ -1509,6 +1514,15 @@ impl Api {
     pub async fn delete_emoji(&self, guild: &str, emoji: &str) -> Result<()> {
         let path = format!("/guilds/{guild}/emojis/{emoji}");
         self.empty(self.request(Method::DELETE, &path)).await
+    }
+
+    /// Discord's own sticker packs, which its sticker picker lists after the
+    /// servers' stickers.
+    pub async fn sticker_packs(&self) -> Result<Vec<crate::ready::StickerPack>> {
+        let answer = self
+            .json(self.request(Method::GET, "/sticker-packs"))
+            .await?;
+        Ok(crate::ready::sticker_packs(&answer))
     }
 
     /// A server's stickers, each with who uploaded it.

@@ -24,6 +24,7 @@ import "fonts/AtkinsonHyperlegibleNext-ExtraBold.ttf";
 import { Theme, Tip, ReactionHover, Middle, Popup, PopupMotion } from "theme.slint";
 import { TitleBar, ResizeEdges } from "title_bar.slint";
 import { GifPicker, GifTile, PickerTab } from "gifs.slint";
+import { StickerPicker, StickerRow, StickerCell } from "stickers.slint";
 import { ActionButton, IconButton, PingToggle, DeviceToggle, Avatar, TextField, MessagesSkeleton, ContextMenu, MenuItem, MenuRow, DeviceMenu, HeaderToggle, Banner, StatusText } from "controls.slint";
 import { PersonRow, CallLink, CallLinkCard, LinkTouch, SignalIcon, VoiceDock, StreamPip, CallInvite, JoinVoice, ParticipantGrid, CallControls, IncomingCall, SwitchDialog, InputLevel, ShareMenu, ShareScreen, VolumeMenu, Soundboard, SoundRow } from "voice.slint";
 import { ServerRow, RoomRow, StatusDot, ServerRail, ServerHeader, RoomList } from "rail.slint";
@@ -58,6 +59,7 @@ export { RequestRow, FriendRow } from "friends.slint";
 export { ContactRow, PlaceRow, ReactionPill, ReactorRow, PollAnswerDraft } from "dialogs.slint";
 export { FoundRow, PickRow } from "header.slint";
 export { GifTile, GifFavorites } from "gifs.slint";
+export { StickerRow, StickerCell } from "stickers.slint";
 
 export component YapfastWindow inherits Window {
     /// "Yapfast", or "(3) Yapfast" with mentions and DMs waiting, as a browser
@@ -504,6 +506,17 @@ export component YapfastWindow inherits Window {
     callback gif-pick(string, bool);
     callback gif-favorite(string);
     callback gifs-scrolled(length, length);
+    /// The sticker picker, the picker's middle tab; see StickerPicker. Its
+    /// rows are built for `sticker-columns` stickers each, and go when it
+    /// closes or shows another tab.
+    in property <[StickerRow]> sticker-rows;
+    in-out property <string> sticker-query;
+    in property <string> sticker-first-usable;
+    callback sticker-search(string, int);
+    callback sticker-pick(string);
+    callback close-stickers;
+    /// The stickers show: Discord's own packs load, if they haven't.
+    callback load-sticker-packs;
     /// "Replying to …" or "Editing your message"; empty for a new message.
     in property <string> compose-label;
     /// Whether the reply being written mentions the person it replies to.
@@ -1900,9 +1913,25 @@ export component YapfastWindow inherits Window {
         emoji-picker.close();
         expressions.close();
     }
-    // The picker above the composer: GIFs, and the emoji. Its GIFs let go of
-    // their pictures when it closes or shows the emoji.
+    // The picker above the composer: GIFs (0), the stickers (2) and the emoji
+    // (1). Its GIFs and stickers let go of their pictures when it closes or
+    // shows another tab.
     property <int> expression-tab;
+    // As many 96px stickers, 4px apart, as the picker's width holds inside
+    // its 12px sides.
+    out property <int> sticker-columns: max(1, floor((root.picker-shown - 20px) / 100px));
+    // The stickers show, for Discord's own packs to join them as they come.
+    out property <bool> stickers-shown: root.expressions-open && root.expression-tab == 2;
+    changed sticker-columns => {
+        if root.expressions-open && root.expression-tab == 2 {
+            root.sticker-search(root.sticker-query, root.sticker-columns);
+        }
+    }
+    function open-stickers() {
+        root.sticker-query = "";
+        root.load-sticker-packs();
+        root.sticker-search("", root.sticker-columns);
+    }
     function open-expressions(tab: int) {
         root.react-item = "yapfast:composer";
         root.emoji-query = "";
@@ -1911,15 +1940,17 @@ export component YapfastWindow inherits Window {
         root.emoji-panel-width = root.picker-shown;
         root.emoji-search("");
         if tab == 0 { root.open-gifs(); }
+        if tab == 2 { root.open-stickers(); }
         expressions.show();
     }
     function show-expression-tab(tab: int) {
         if tab == root.expression-tab { return; }
+        if root.expression-tab == 0 { root.close-gifs(); }
+        if root.expression-tab == 2 { root.close-stickers(); }
         root.expression-tab = tab;
         // The emoji's columns follow the width the picker was dragged to while
-        // the GIFs showed.
-        if tab == 0 { root.open-gifs(); } else {
-            root.close-gifs();
+        // another tab showed.
+        if tab == 0 { root.open-gifs(); } else if tab == 2 { root.open-stickers(); } else {
             root.emoji-panel-width = root.picker-shown;
             root.emoji-reflow();
         }
@@ -1928,6 +1959,7 @@ export component YapfastWindow inherits Window {
     changed expressions-open => {
         if !root.expressions-open {
             root.close-gifs();
+            root.close-stickers();
             if !root.picker-open { root.emoji-picker-closed(); }
             root.focus-composer();
             root.react-item = "";
@@ -1965,7 +1997,15 @@ export component YapfastWindow inherits Window {
                 HorizontalLayout {
                     padding-left: 16px; spacing: 8px; alignment: start;
                     PickerTab { text: "GIFs"; selected: root.expression-tab == 0; clicked => { root.show-expression-tab(0); } }
+                    PickerTab { text: "Stickers"; selected: root.expression-tab == 2; clicked => { root.show-expression-tab(2); } }
                     PickerTab { text: "Emoji"; selected: root.expression-tab == 1; clicked => { root.show-expression-tab(1); } }
+                }
+                if root.expression-tab == 2: StickerPicker {
+                    rows: root.sticker-rows; query <=> root.sticker-query;
+                    first-usable: root.sticker-first-usable;
+                    search(text) => { root.sticker-search(text, root.sticker-columns); }
+                    pick(id) => { root.sticker-pick(id); expressions.close(); }
+                    close => { expressions.close(); }
                 }
                 if root.expression-tab == 0: GifPicker {
                     view: root.gif-view; query <=> root.gif-query; tiles: root.gif-tiles;
@@ -3149,7 +3189,7 @@ export component YapfastWindow inherits Window {
                                             got-focus => { root.aside-composer-last = false; }
                                             paste => { root.paste-into-composer(); }
                                             expressions(tab) => {
-                                                if tab == 0 && !root.can-pick-gifs { return; }
+                                                if tab != 1 && !root.can-pick-gifs { return; }
                                                 root.anchor(emoji-button.absolute-position.x, emoji-button.absolute-position.y, emoji-button.width, emoji-button.height, false);
                                                 if root.can-pick-gifs {
                                                     root.open-expressions(tab);
@@ -3158,7 +3198,7 @@ export component YapfastWindow inherits Window {
                                                 }
                                             }
                                         }
-                                        // As Discord's: the GIFs, then the emoji, in one picker.
+                                        // As Discord's: the GIFs, the stickers, then the emoji, in one picker.
                                         if root.can-pick-gifs: VerticalLayout {
                                             alignment: end; padding-bottom: 8px;
                                             gif-button := IconButton {
@@ -3168,6 +3208,18 @@ export component YapfastWindow inherits Window {
                                                 clicked => {
                                                     root.anchor(emoji-button.absolute-position.x, emoji-button.absolute-position.y, emoji-button.width, emoji-button.height, false);
                                                     root.open-expressions(0);
+                                                }
+                                            }
+                                        }
+                                        if root.can-pick-gifs: VerticalLayout {
+                                            alignment: end; padding-bottom: 8px;
+                                            IconButton {
+                                                icon: @image-url("icons/sticker.svg"); label: "Open sticker picker";
+                                                glyph: 22px; enabled: root.composer-enabled;
+                                                tint: root.expressions-open && root.expression-tab == 2 ? Theme.text : Theme.secondary;
+                                                clicked => {
+                                                    root.anchor(emoji-button.absolute-position.x, emoji-button.absolute-position.y, emoji-button.width, emoji-button.height, false);
+                                                    root.open-expressions(2);
                                                 }
                                             }
                                         }

@@ -1129,9 +1129,15 @@ impl Pictures {
                     return;
                 };
                 let address = url.clone();
+                // The sticker picker's Lottie stickers come here too; only
+                // their addresses decode as Lottie.
                 let decoded = tokio::task::spawn_blocking(move || {
-                    chat::decode_picture(&data, width, height)
-                        .map(|picture| read_kept(&address, picture))
+                    let picture = if yapfast_discord::ready::lottie_sticker(&address) {
+                        chat::decode_lottie(&data, width, height)
+                    } else {
+                        chat::decode_picture(&data, width, height)
+                    };
+                    picture.map(|picture| read_kept(&address, picture))
                 })
                 .await;
                 match decoded {

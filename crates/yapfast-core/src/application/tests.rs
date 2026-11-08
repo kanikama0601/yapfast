@@ -852,7 +852,7 @@ fn a_reply_mentions_its_author_unless_switched_off() {
         options,
         crate::chat::SendOptions {
             quiet_reply: true,
-            silent: false
+            ..Default::default()
         }
     );
 }
@@ -6238,6 +6238,130 @@ fn discord_server() -> Application {
         ..Default::default()
     }));
     app
+}
+
+#[test]
+#[cfg(feature = "discord")]
+fn the_sticker_picker_sends_a_servers_stickers_where_they_may_go() {
+    let mut app = discord_server();
+    change_server(&mut app, |server| {
+        server.stickers = Arc::new(yapfast_discord::ready::stickers(&serde_json::json!([
+            {"id": "71", "name": "Wave", "tags": "👋", "format_type": 1},
+            {"id": "72", "name": "Gone", "tags": "", "format_type": 1, "available": false},
+        ])));
+    });
+    app.dispatch(Action::Navigate(Navigation::Server("discord:10".into())));
+    app.dispatch(Action::SelectRoom("discord:10:11".into()));
+    app.apply(Event::Timeline {
+        room: "discord:10:11".into(),
+        messages: timeline(vec![]),
+    });
+    let sets = app.sticker_sets();
+    assert_eq!(sets.len(), 1);
+    assert_eq!(sets[0].server, "Test");
+    let shown: Vec<_> = sets[0]
+        .stickers
+        .iter()
+        .map(|sticker| (sticker.name.as_str(), sticker.usable))
+        .collect();
+    assert_eq!(shown, [("Wave", true)], "one it lost isn't offered");
+    assert!(
+        sets[0].stickers[0]
+            .picture
+            .ends_with("/stickers/71.png?size=160")
+    );
+
+    // A click sends it on its own, leaving the composer's text.
+    app.dispatch(Action::SetDraft("still typing".into()));
+    let sent: Vec<_> = app
+        .dispatch(Action::PickSticker("71".into()))
+        .into_iter()
+        .filter_map(|effect| match effect {
+            Effect::Backend(command @ Command::Send { .. }) => Some(command),
+            _ => None,
+        })
+        .collect();
+    assert!(matches!(
+        sent.as_slice(),
+        [Command::Send { room, body, reply: None, options, files }]
+            if room == "discord:10:11" && body.is_empty() && files.is_empty()
+                && options.sticker == Some(71)
+    ));
+    assert_eq!(app.state.draft(), "still typing");
+    assert!(
+        app.dispatch(Action::PickSticker("72".into()))
+            .iter()
+            .all(|effect| !matches!(effect, Effect::Backend(Command::Send { .. }))),
+        "nor sent"
+    );
+
+    // Discord's own packs are asked for once, as the picker shows, and
+    // follow the servers' stickers; anyone may send theirs.
+    let asked = |effects: Vec<Effect>| {
+        effects
+            .iter()
+            .filter(|effect| {
+                matches!(
+                    effect,
+                    Effect::Backend(Command::Discord(DiscordCommand::StickerPacks))
+                )
+            })
+            .count()
+    };
+    assert_eq!(asked(app.dispatch(Action::LoadStickerPacks)), 1);
+    assert_eq!(asked(app.dispatch(Action::LoadStickerPacks)), 0);
+    app.apply(Event::StickerPacks(Err("offline".into())));
+    assert_eq!(
+        asked(app.dispatch(Action::LoadStickerPacks)),
+        1,
+        "again after failing"
+    );
+    app.apply(Event::StickerPacks(Ok(vec![chat::StickerSet {
+        id: "847199849233514549".into(),
+        server: "Wumpus Beyond".into(),
+        icon: None,
+        stickers: vec![chat::PickerSticker {
+            id: "81".into(),
+            name: "Hi".into(),
+            tags: "👋".into(),
+            picture: "https://cdn/stickers/81.png".into(),
+            usable: true,
+        }],
+    }])));
+    let sets: Vec<_> = app
+        .sticker_sets()
+        .into_iter()
+        .map(|set| set.server)
+        .collect();
+    assert_eq!(sets, ["Test", "Wumpus Beyond"]);
+    assert!(
+        app.dispatch(Action::PickSticker("81".into()))
+            .iter()
+            .any(|effect| matches!(
+                effect,
+                Effect::Backend(Command::Send { options, .. }) if options.sticker == Some(81)
+            ))
+    );
+    assert_eq!(
+        asked(app.dispatch(Action::LoadStickerPacks)),
+        0,
+        "once they came"
+    );
+
+    // Where the account can't write, nothing goes.
+    app.state
+        .rooms
+        .iter_mut()
+        .map(Arc::make_mut)
+        .find(|room| room.id == "discord:10:11")
+        .unwrap()
+        .read_only = true;
+    assert!(!app.state.can_write_in("discord:10:11"));
+    assert!(
+        app.dispatch(Action::PickSticker("71".into()))
+            .iter()
+            .all(|effect| !matches!(effect, Effect::Backend(Command::Send { .. })))
+    );
 }
 
 #[test]

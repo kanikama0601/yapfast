@@ -480,6 +480,16 @@ impl Tracker {
                 server.emojis = std::sync::Arc::new(ready::emojis(&data["emojis"]));
                 true
             }
+            Event::GuildStickersUpdate => {
+                let Some(server) = data["guild_id"]
+                    .as_str()
+                    .and_then(|guild| self.server_mut(guild))
+                else {
+                    return false;
+                };
+                server.stickers = std::sync::Arc::new(ready::stickers(&data["stickers"]));
+                true
+            }
             // Carries the server's own fields, without its channels or members.
             Event::GuildUpdate => {
                 let (Some(update), Some(known)) = (
@@ -3056,6 +3066,50 @@ mod tests {
             shared(&unread.servers[1], &renamed.servers[1]),
             (true, true)
         );
+    }
+
+    #[test]
+    fn keeps_a_servers_stickers_from_ready_and_their_updates() {
+        let ready = json!({
+            "user": {"id": "1"},
+            "guilds": [
+                {"id": "10", "properties": {"name": "One"}, "joined_at": "2026-01-01T00:00:00+00:00",
+                 "channels": [{"id": "11", "name": "general", "type": 0, "position": 0}],
+                 "stickers": [
+                     {"id": "71", "name": "wave", "tags": "👋", "format_type": 1, "available": true},
+                     {"id": "72", "name": "Bounce", "tags": "ball", "format_type": 4},
+                 ]},
+            ],
+        });
+        let mut tracker = Tracker::from_ready("1".into(), &ready, Default::default());
+        let names = |tracker: &mut Tracker| {
+            tracker.snapshot().servers[0]
+                .stickers
+                .iter()
+                .map(|sticker| (sticker.name.clone(), sticker.format))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            names(&mut tracker),
+            [("Bounce".to_owned(), 4), ("wave".to_owned(), 1)],
+            "by name, whatever its case"
+        );
+        assert!(tracker.apply(
+            &Event::GuildStickersUpdate,
+            &json!({"guild_id": "10", "stickers": [
+                {"id": "73", "name": "Lottie", "tags": "", "format_type": 3, "available": false},
+            ]}),
+        ));
+        let stickers = tracker.snapshot().servers[0].stickers.clone();
+        assert_eq!(stickers.len(), 1);
+        assert_eq!(
+            (stickers[0].id.as_str(), stickers[0].available),
+            ("73", false)
+        );
+        assert!(!tracker.apply(
+            &Event::GuildStickersUpdate,
+            &json!({"guild_id": "99", "stickers": []}),
+        ));
     }
 
     #[test]

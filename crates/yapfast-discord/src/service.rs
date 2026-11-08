@@ -662,6 +662,9 @@ pub struct Discord {
     /// Discord's own soundboard sounds, once a call asked for them: Discord's
     /// client asks once a session too.
     default_sounds: Arc<tokio::sync::Mutex<Option<Arc<[soundboard::Sound]>>>>,
+    /// Discord's own sticker packs, once the sticker picker asked for them,
+    /// for the session.
+    sticker_packs: Arc<tokio::sync::Mutex<Option<Arc<[ready::StickerPack]>>>>,
 }
 
 /// Discord allows starting 10 new DMs with people in 10 minutes, and treats
@@ -754,6 +757,7 @@ impl Discord {
             application_icons: Arc::default(),
             mfa: Arc::default(),
             default_sounds: Arc::default(),
+            sticker_packs: Arc::default(),
         })
     }
 
@@ -3075,6 +3079,39 @@ impl Discord {
         let sounds: Arc<[soundboard::Sound]> = self.api.default_soundboard_sounds().await?.into();
         *kept = Some(sounds.clone());
         Ok(sounds)
+    }
+
+    /// Discord's own sticker packs, asked for the first time only, as
+    /// Discord's client asks once a session.
+    pub async fn sticker_packs(&self) -> Result<Arc<[ready::StickerPack]>> {
+        let mut kept = self.sticker_packs.lock().await;
+        if let Some(packs) = kept.as_ref() {
+            return Ok(packs.clone());
+        }
+        let packs: Arc<[ready::StickerPack]> = self.api.sticker_packs().await?.into();
+        *kept = Some(packs.clone());
+        Ok(packs)
+    }
+
+    /// A sticker this account knows of, by id: a server's, or one of
+    /// Discord's own once their packs came.
+    pub fn known_sticker(&self, id: &str) -> Option<ready::Sticker> {
+        let snapshot = self.snapshots.borrow().clone();
+        let of_servers = snapshot
+            .servers
+            .iter()
+            .flat_map(|server| server.stickers.iter())
+            .find(|sticker| sticker.id == id)
+            .cloned();
+        of_servers.or_else(|| {
+            // Held only while the packs are being fetched, when none is known.
+            let packs = self.sticker_packs.try_lock().ok()?.clone()?;
+            packs
+                .iter()
+                .flat_map(|pack| &pack.stickers)
+                .find(|sticker| sticker.id == id)
+                .cloned()
+        })
     }
 
     /// Plays `sound` for everyone in the call `channel`; see

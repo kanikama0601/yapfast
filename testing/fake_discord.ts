@@ -158,7 +158,17 @@
 // The server has two custom emoji, :talk: and the animated :party:, served
 // from /emojis/, and a sticker from /stickers/. `--nitro` gives Alice Nitro,
 // so every server's emoji are hers to use, and `--cdn-delay MS` makes each
-// emoji and sticker take that long, as a round trip to the real CDN does. POST /_control/showcase makes
+// emoji and sticker take that long, as a round trip to the real CDN does.
+// "Server" has no stickers of its own until POST /_control/stickers gives it
+// Bob's Wave, Bounce (a GIF) and Lottie, with GUILD_STICKERS_UPDATE. GET
+// /sticker-packs gives Discord's own packs: "Wumpus Beyond", of three, and an
+// empty one; GET /_control/sticker-packs-asked says how many times it was
+// asked. A message's `sticker_ids` take up to three stickers: Discord's own
+// anywhere, and "Server"'s in its channels or, with Nitro, anywhere; any
+// other is "Invalid sticker sent" (50081), and a
+// message with no content, files, poll or sticker "Cannot send an empty
+// message" (50006). GET /_control/stickers-sent lists the stickers sent, with
+// their channels. POST /_control/showcase makes
 // Bob post a spoiler, custom emoji, stickers, a GIF, a spoilered picture and a reply
 // to the start of #general's history, and Alice block Dave, who then posts.
 // GET /guilds/{id}/preview answers what the card of one of its emoji shows:
@@ -2142,6 +2152,31 @@ const expressions = {
   made: 0,
   pictures: new Map<string, { type: string; data: Uint8Array }>(),
 };
+/** Bob's stickers that POST /_control/stickers gives "Server". */
+const SERVER_STICKERS = (): ServerSticker[] => [
+  { id: STICKER_WAVE, name: "Wave", tags: "👋", description: "A hand waving", format_type: 1, user: users.bob.id },
+  { id: STICKER_BOUNCE, name: "Bounce", tags: "ball", description: "", format_type: 4, user: users.bob.id },
+  { id: STICKER_LOTTIE, name: "Lottie", tags: "spin", description: "", format_type: 3, user: users.bob.id },
+];
+/** One of Discord's own stickers, as GET /sticker-packs gives it. */
+type StandardSticker = { id: string; name: string; tags: string; format_type: number; sort_value: number };
+/** Discord's own sticker packs, which GET /sticker-packs gives: one of three
+ *  stickers, one of them Lottie, and one with none. */
+const STICKER_PACKS: { id: string; name: string; cover: string; stickers: StandardSticker[] }[] = [
+  {
+    id: "1400000000000000330", name: "Wumpus Beyond", cover: "1400000000000000332",
+    stickers: [
+      { id: "1400000000000000331", name: "Wumpus Wave", tags: "wave, hello", format_type: 1, sort_value: 2 },
+      { id: "1400000000000000332", name: "Wumpus Hi", tags: "👋", format_type: 1, sort_value: 1 },
+      { id: "1400000000000000333", name: "Wumpus Spin", tags: "spin", format_type: 3, sort_value: 3 },
+    ],
+  },
+  { id: "1400000000000000340", name: "Empty", cover: "", stickers: [] },
+];
+/** How many times GET /sticker-packs was asked, which GET /_control/sticker-packs-asked says. */
+let stickerPacksAsked = 0;
+/** The stickers sent in messages, as GET /_control/stickers-sent lists them. */
+const stickersSent: { channel: string; ids: string[] }[] = [];
 
 function wireEmoji(emoji: ServerEmoji, uploader = false) {
   const user = Object.values(users).find((known) => known.id === emoji.user);
@@ -2186,6 +2221,7 @@ function resetGuild() {
   expressions.emojis = SERVER_EMOJIS();
   expressions.stickers = [];
   expressions.pictures.clear();
+  stickersSent.length = 0;
   revokedInvites.clear();
   Object.assign(mfa, { on: false, methods: ["totp"], code: "123456" });
   mfa.tickets.clear();
@@ -5239,6 +5275,18 @@ async function api(req: Request, path: string, origin: string): Promise<Response
   }
 
   if (method === "GET" && path === "/soundboard-default-sounds") return json(DEFAULT_SOUNDS);
+  if (method === "GET" && path === "/sticker-packs") {
+    stickerPacksAsked++;
+    return json({
+      sticker_packs: STICKER_PACKS.map((pack) => ({
+        id: pack.id, name: pack.name, sku_id: pack.id, description: `${pack.name}, by Discord`,
+        ...(pack.cover ? { cover_sticker_id: pack.cover } : {}),
+        stickers: pack.stickers.map((sticker) => ({
+          ...sticker, description: null, type: 1, pack_id: pack.id, available: true,
+        })),
+      })),
+    });
+  }
 
   // Playing a sound: only in the call Alice is in, neither deafened nor
   // muted by the server; a server's sound only in its own channels, unless
@@ -5398,6 +5446,23 @@ async function api(req: Request, path: string, origin: string): Promise<Response
         };
         polls.push(asked);
       }
+      // Up to three stickers, as Discord takes them: Discord's own anywhere,
+      // and "Server"'s in its own channels, or anywhere with Nitro. Any
+      // other is invalid.
+      const stickerIds: unknown[] = Array.isArray(body.sticker_ids) ? body.sticker_ids : [];
+      const standard = STICKER_PACKS.flatMap((pack) => pack.stickers);
+      const stickers = stickerIds.map((id) =>
+        standard.find((sticker) => sticker.id === String(id))
+          ?? expressions.stickers.find((sticker) => sticker.id === String(id)));
+      const foreign = stickers.some((sticker) => sticker && !standard.includes(sticker as StandardSticker)
+        && !nitro && guildOf(m[1]!).guild_id !== GUILD);
+      if (stickerIds.length > 3 || stickers.some((sticker) => !sticker) || foreign) {
+        return json({ message: "Invalid sticker sent", code: 50081 }, 400);
+      }
+      if (!body.content && !body.attachments?.length && !poll && stickers.length === 0) {
+        return json({ message: "Cannot send an empty message", code: 50006 }, 400);
+      }
+      if (stickers.length > 0) stickersSent.push({ channel: m[1]!, ids: stickers.map((sticker) => sticker!.id) });
       const reply = body.message_reference?.message_id;
       const attached = takeUploads(body.attachments, m[1]!);
       if (!attached) return json({ message: "Invalid Form Body", code: 50035 }, 400);
@@ -5406,6 +5471,9 @@ async function api(req: Request, path: string, origin: string): Promise<Response
         reply: reply && byId.has(reply) ? reply : undefined,
         files: attached,
         poll,
+        ...(stickers.length > 0
+          ? { stickers: stickers.map((sticker) => ({ id: sticker!.id, name: sticker!.name, format_type: sticker!.format_type })) }
+          : {}),
       });
       // An env's favourite GIF comes with its embed, so a recording doesn't
       // show its link for the moment before the embed would come.
@@ -8007,6 +8075,17 @@ const server = Bun.serve<SocketData>({
         return new Response(bouncing(size, 10, [124, 196, 255]), { headers: { "content-type": "image/gif" } });
       }
       return new Response(badge(emoji[2]!, size), { headers: { "content-type": "image/png" } });
+    }
+    if (req.method === "POST" && path === "/_control/stickers") {
+      expressions.stickers = SERVER_STICKERS();
+      dispatch("GUILD_STICKERS_UPDATE", { guild_id: GUILD, stickers: expressions.stickers.map((sticker) => wireSticker(sticker)) });
+      return new Response("stickers added\n");
+    }
+    if (req.method === "GET" && path === "/_control/stickers-sent") {
+      return json(stickersSent);
+    }
+    if (req.method === "GET" && path === "/_control/sticker-packs-asked") {
+      return new Response(String(stickerPacksAsked));
     }
     if (req.method === "POST" && path === "/_control/showcase") {
       postShowcase(origin);

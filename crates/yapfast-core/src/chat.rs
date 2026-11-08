@@ -907,6 +907,32 @@ pub struct EmojiSet {
     pub emoji: Vec<CustomEmoji>,
 }
 
+/// A server's stickers, as the sticker picker lists them.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct StickerSet {
+    /// The server, by its server id.
+    pub id: String,
+    pub server: String,
+    /// The address of the server's icon; see [`ChatServer::icon`].
+    pub icon: Option<String>,
+    pub stickers: Vec<PickerSticker>,
+}
+
+/// A sticker in the sticker picker.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PickerSticker {
+    /// Discord's id for it, which sending names.
+    pub id: String,
+    pub name: String,
+    /// Its related emoji or words, which a search finds it by too.
+    pub tags: String,
+    /// Its picture's address.
+    pub picture: String,
+    /// This account may send it where it is writing: a server's own
+    /// stickers in its channels, and with Nitro any server's anywhere.
+    pub usable: bool,
+}
+
 /// `text` with each `:name:` of a usable custom emoji, outside code, in Discord's
 /// form, `<:name:id>`. The first emoji of a name wins.
 pub fn wire_emoji(text: &str, usable: &[CustomEmoji]) -> String {
@@ -1612,6 +1638,9 @@ pub struct SendOptions {
     pub quiet_reply: bool,
     /// A message that notifies nobody, as Discord's `@silent` sends it.
     pub silent: bool,
+    /// A Discord sticker it carries, by id, as the sticker picker sends one:
+    /// on its own, with no text.
+    pub sticker: Option<u64>,
 }
 
 /// What the UI asks of the networks and voice. [`Command::route`] decides
@@ -2041,6 +2070,9 @@ pub enum DiscordCommand {
     /// GIFs for a search, or with `None` those trending; [`Event::Gifs`]
     /// follows.
     Gifs(Option<String>),
+    /// Discord's own sticker packs, for the sticker picker;
+    /// [`Event::StickerPacks`] follows.
+    StickerPacks,
     /// Terms to search for instead of one; [`Event::GifSuggestions`] follows.
     GifSuggestions(String),
     /// Tell Discord's GIF provider a search for `query` led to the GIF `id`.
@@ -3251,6 +3283,9 @@ pub enum Event {
         query: Option<String>,
         result: Result<Vec<Gif>, String>,
     },
+    /// Discord's own sticker packs, each as a set of stickers anyone may
+    /// send, or why they couldn't be fetched.
+    StickerPacks(Result<Vec<StickerSet>, String>),
     GifSuggestions {
         query: String,
         terms: Vec<String>,

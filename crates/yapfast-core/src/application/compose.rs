@@ -317,6 +317,7 @@ impl Application {
                     options: chat::SendOptions {
                         quiet_reply: matches!(compose, Some(Compose::Reply { ping: false, .. })),
                         silent,
+                        sticker: None,
                     },
                     reply: match compose {
                         Some(Compose::Reply { item, .. }) => Some(item),

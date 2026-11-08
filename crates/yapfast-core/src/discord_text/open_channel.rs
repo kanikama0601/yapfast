@@ -119,6 +119,8 @@ impl Run {
 /// Messages an open channel keeps above the oldest in view, beside the
 /// newest [`KEPT_MESSAGES`].
 const KEPT_ABOVE_VIEW: usize = 50;
+/// The size Discord shows stickers at, as a sent one's dimensions say.
+const STICKER_SIZE: u32 = 160;
 /// How many more messages than it keeps an open channel takes in before it
 /// lets go of its oldest, so it doesn't each time one comes.
 const LET_GO_AFTER: usize = 100;
@@ -672,7 +674,9 @@ impl OpenChannel {
         options: SendOptions,
         files: Vec<OutgoingFile>,
     ) -> Result<(), &'static str> {
-        if (body.trim().is_empty() && files.is_empty()) || body.chars().count() > MAX_CHARS {
+        if (body.trim().is_empty() && files.is_empty() && options.sticker.is_none())
+            || body.chars().count() > MAX_CHARS
+        {
             return Err("Discord messages must contain text and be at most 2,000 characters.");
         }
         if files.len() > yapfast_discord::api::MAX_FILES {
@@ -761,11 +765,13 @@ impl OpenChannel {
                         .map_err(|_| format!("Yapfast could not read {name}."))?;
                     read.push((upload_name(&name, spoiler), data));
                 }
+                let sticker = options.sticker.map(|id| id.to_string());
                 let sending = yapfast_discord::api::Sending {
                     nonce: &nonce,
                     reply: reply.as_deref(),
                     ping_reply: !options.quiet_reply,
                     silent: options.silent,
+                    sticker: sticker.as_deref(),
                 };
                 discord
                     .send(&guild, &channel, &body, sending, read)
@@ -1586,6 +1592,7 @@ impl OpenChannel {
                         spoiler: file.spoiler,
                         video: false,
                     })
+                    .chain(self.pending_sticker(discord, pending.options.sticker, &mut wanted))
                     .collect(),
                 ..Default::default()
             }));
@@ -1805,6 +1812,47 @@ impl OpenChannel {
                 .map(|details| details.messages)
                 .or((message.system.is_none()).then_some(link.messages)),
             archived: details.map_or(link.archived, |details| details.archived),
+        })
+    }
+
+    /// A sticker waiting to send, as it will show once sent: its picture,
+    /// on its own. The picker sends only a sticker of a server this account
+    /// is in, or one of Discord's own packs, so the service knows it; its
+    /// picture comes as a message's would.
+    fn pending_sticker(
+        &self,
+        discord: &Discord,
+        sticker: Option<u64>,
+        wanted: &mut Vec<String>,
+    ) -> Option<Attachment> {
+        let sticker = discord.known_sticker(&sticker?.to_string())?;
+        let url = sticker.picture();
+        let preview = match self.pictures.get(&url) {
+            Some(picture) => picture.clone(),
+            None => {
+                let kept = self
+                    .previews
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner())
+                    .get(&url);
+                if kept.is_none() {
+                    wanted.push(url.clone());
+                }
+                kept
+            }
+        };
+        Some(Attachment {
+            name: sticker.name.clone(),
+            size: None,
+            image: true,
+            dimensions: Some((STICKER_SIZE, STICKER_SIZE)),
+            preview,
+            preview_failed: false,
+            placement: Placement::Sticker,
+            spoiler: false,
+            video: false,
+            gif: None,
+            url: Some(url.into()),
         })
     }
 
